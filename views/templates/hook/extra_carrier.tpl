@@ -17,7 +17,7 @@
 *}
 <div class="alert alert-info" id="everclickncollect_id" data-evercncurl="{$ajax_url|escape:'htmlall':'UTF-8'}" data-evercnccarrier="{$everclickncollect_id|escape:'htmlall':'UTF-8'}">
 	<table id="store_depot_list" class="table table-striped table-bordered table-labeled hidden-sm-down">
-		<th class="text-center">{l s='Store name' mod='everpsclickandcollect'}</th>
+		<th class="text-center">{l s='Store' mod='everpsclickandcollect'}</th>
 		{if isset($ask_date) && $ask_date}
 		<th class="text-center">{l s='Choose date' mod='everpsclickandcollect'}</th>
 		{/if}
@@ -25,7 +25,7 @@
 		{foreach from=$stores item=store}
 		<tr class="carrier_depot_item">
 			<td class="text-center">
-				<img src="{$store.image.bySize.stores_default.url|escape:'htmlall':'UTF-8'}" alt="{$store.image.legend|escape:'htmlall':'UTF-8'}" title="{$store.image.legend nofilter}">
+				<img src="{$store.image.bySize.stores_default.url|escape:'htmlall':'UTF-8'}" alt="{$store.image.legend|escape:'htmlall':'UTF-8'}" title="{$store.image.legend nofilter}"><br>
 				{$store.name|escape:'htmlall':'UTF-8'}<br>
 				{$store.address.formatted nofilter}
 			</td>
@@ -44,7 +44,7 @@
 			</td>
 			{/if}
 			<td class="text-center">
-				<input type="radio" name="evershipping" id="{$store.id|escape:'htmlall':'UTF-8'}" value="{$store.id|escape:'htmlall':'UTF-8'}" {if isset($store.selected) && $store.selected}checked{/if} {if isset($only_one) && $only_one}disabled{/if}>
+				<input type="radio" name="everpsclickandcollect" id="{$store.id|escape:'htmlall':'UTF-8'}" value="{$store.id|escape:'htmlall':'UTF-8'}" {if isset($store.selected) && $store.selected}checked{/if} {if isset($only_one) && $only_one}disabled{/if}>
 			</td>
 		</tr>
 		{/foreach}

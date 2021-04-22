@@ -31,7 +31,7 @@ class Everpsclickandcollect extends CarrierModule
     {
         $this->name = 'everpsclickandcollect';
         $this->tab = 'shipping_logistics';
-        $this->version = '2.1.0';
+        $this->version = '2.1.2';
         $this->author = 'Team Ever';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -61,6 +61,7 @@ class Everpsclickandcollect extends CarrierModule
             $this->registerHook('displayPDFDeliverySlip') &&
             $this->registerHook('displayPDFInvoice') &&
             $this->registerHook('displayAdminOrder') &&
+            // $this->registerHook('actionEmailSendBefore') &&
             $this->registerHook('updateCarrier');
     }
 
@@ -68,6 +69,12 @@ class Everpsclickandcollect extends CarrierModule
     {
         // Install SQL
         include(dirname(__FILE__).'/sql/uninstall.php');
+        $carrier = new Carrier(
+            (int)Configuration::get('EVERPSCLICKANDCOLLECT_CARRIER_ID')
+        );
+        $carrier->delete();
+        Configuration::deleteByName('EVERPSCLICKANDCOLLECT_CARRIER_ID');
+        Configuration::deleteByName('EVERPSCLICKANDCOLLECT_ASK_DATE');
         return parent::uninstall();
     }
 
@@ -284,7 +291,7 @@ class Everpsclickandcollect extends CarrierModule
     {
         $result = false;
         $carrier = new Carrier();
-        $carrier->name = $this->l('Click and collect');
+        $carrier->name = 'Click and collect';
         $carrier->is_module = true;
         $carrier->active = 1;
         $carrier->range_behavior = 1;
@@ -375,6 +382,12 @@ class Everpsclickandcollect extends CarrierModule
 
     public function hookUpdateCarrier($params)
     {
+        if ((int)$params['id_carrier'] == (int)Configuration::get('EVERPSCLICKANDCOLLECT_CARRIER_ID')) {
+            Configuration::updateValue(
+                'EVERPSCLICKANDCOLLECT_CARRIER_ID',
+                $params['carrier']->id
+            );
+        }
         /**
          * Not needed since 1.5
          * You can identify the carrier by the id_reference
@@ -387,14 +400,22 @@ class Everpsclickandcollect extends CarrierModule
         $evercnc_id_store = Context::getContext()->cookie->__get('everclickncollect_id');
         $everclickncollect_date = Context::getContext()->cookie->__get('everclickncollect_date');
         $shipping_stores = array();
-        foreach ($stores as $store) {
+        foreach ($stores as $key => $store) {
             if ((bool)$this->isAllowedStore((int)$store['id_store']) === false) {
                 continue;
             }
-            if ((int)$store['id_store'] == (int)$evercnc_id_store) {
-                $store['selected'] = true;
+            if ($evercnc_id_store) {
+                if ((int)$store['id_store'] == (int)$evercnc_id_store) {
+                    $store['selected'] = true;
+                } else {
+                    $store['selected'] = false;
+                }
             } else {
-                $store['selected'] = false;
+                if ($key == 0) {
+                    $store['selected'] = true;
+                } else {
+                    $store['selected'] = false;
+                }
             }
             $shipping_stores[] = $store;
         }
@@ -417,6 +438,44 @@ class Everpsclickandcollect extends CarrierModule
             );
             return $this->display(__FILE__, 'extra_carrier.tpl', $this->getCacheId());
         }
+    }
+
+    public function hookActionEmailSendBefore($params)
+    {
+        if (isset($params['templateVars']['{id_order}'])
+            && isset($params['templateVars']['{carrier}'])
+        ) {
+            $id_order = (int)$params['templateVars'] ["{id_order}"];
+            $order = new Order(
+                (int)$id_order
+            );
+            if ((int)$order->id_carrier != (int)Configuration::get('EVERPSCLICKANDCOLLECT_CARRIER_ID')) {
+                return;
+            }
+            $sql = new DbQuery;
+            $sql->select('*');
+            $sql->from(
+                'everpsclickandcollect'
+            );
+            $sql->where(
+                'id_cart = '.(int)$order->id_cart
+            );
+            $clickncollect = Db::getInstance()->getRow($sql);
+            if ($clickncollect) {
+                $stores = $this->getTemplateVarStores();
+                foreach ($stores as $tpl_store) {
+                    if ((int)$tpl_store['id_store'] == (int)$clickncollect['id_store']) {
+                        $store = $tpl_store;
+                    }
+                }
+                $params['templateVars'] ["{carrier}"] = $params['templateVars'] ["{carrier}"]
+                .' '
+                .$store['name']
+                .' '
+                .$store['address']['formatted'];
+            }
+        }
+        return $params;
     }
 
     public function hookDisplayOrderConfirmation($params)
@@ -444,7 +503,7 @@ class Everpsclickandcollect extends CarrierModule
                 'everpsclickandcollect',
                 array(
                     'id_cart' => (int)$order->id_cart,
-                    'evercnc_id_store' => (int)$evercnc_id_store,
+                    'id_store' => (int)$evercnc_id_store,
                     'delivery_date' => (string)$everclickncollect_date
                 ),
                 false,
@@ -458,14 +517,15 @@ class Everpsclickandcollect extends CarrierModule
                 $store = $tpl_store;
             }
         }
-        $this->context->smarty->assign(array(
-            'store' => $store,
-            'clickncollect' => $clickncollect
-        ));
-        Context::getContext()->cookie->__unset('everclickncollect_id');
-        Context::getContext()->cookie->__unset('everclickncollect_date');
-        Context::getContext()->cookie->__unset('everclickncollect_hour');
-        return $this->display(__FILE__, 'views/templates/hook/order.tpl');
+        if (isset($store)) {
+            $this->context->smarty->assign(array(
+                'store' => $store,
+                'clickncollect' => $clickncollect
+            ));
+            Context::getContext()->cookie->__unset('everclickncollect_id');
+            Context::getContext()->cookie->__unset('everclickncollect_date');
+            return $this->display(__FILE__, 'views/templates/hook/order.tpl');
+        }
     }
 
     public function hookDisplayAdminOrder($params)
