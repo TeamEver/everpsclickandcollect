@@ -18,6 +18,8 @@
 $(document).ready(function() {
 	var ajax_url = $('#everclickncollect_id').data('evercncurl');
 	var everclickncollect_id = $('#everclickncollect_id').data('evercnccarrier');
+	// Trigger ajax on checked radio
+	$('#everclickncollect_id #store_depot_list input[type=radio]:checked').click();
 	// On select date, check input radio to trigger ajax process
 	if ($('#everclickncollect_id .store_date' ).length) {
 		$('#everclickncollect_id .store_date' ).change(function (){
