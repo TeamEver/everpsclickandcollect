@@ -31,7 +31,7 @@ class Everpsclickandcollect extends CarrierModule
     {
         $this->name = 'everpsclickandcollect';
         $this->tab = 'shipping_logistics';
-        $this->version = '2.1.3';
+        $this->version = '2.1.4';
         $this->author = 'Team Ever';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -396,6 +396,7 @@ class Everpsclickandcollect extends CarrierModule
 
     public function hookDisplayCarrierExtraContent($params)
     {
+        $cart = Context::getContext()->cart;
         $stores = $this->getTemplateVarStores();
         $evercnc_id_store = Context::getContext()->cookie->__get('everclickncollect_id');
         $everclickncollect_date = Context::getContext()->cookie->__get('everclickncollect_date');
@@ -416,6 +417,28 @@ class Everpsclickandcollect extends CarrierModule
                 } else {
                     $store['selected'] = false;
                 }
+            }
+            if ((bool)$store['selected'] === true) {
+                if ((bool)Configuration::get('EVERPSCLICKANDCOLLECT_ASK_DATE') === true) {
+                    $delivery_date = $store['business_hours'][0]['day'];
+                } else {
+                    $delivery_date = null;
+                }
+                Db::getInstance()->insert(
+                    'everpsclickandcollect',
+                    array(
+                        'id_cart' => (int)$cart->id,
+                        'id_store' => (int)$store['id_store'],
+                        'delivery_date' => $delivery_date
+                    ),
+                    false,
+                    true,
+                    Db::REPLACE
+                );
+                $this->context->cookie->__set(
+                    'everclickncollect_id',
+                    (int)$store['id_store']
+                );
             }
             $shipping_stores[] = $store;
         }
