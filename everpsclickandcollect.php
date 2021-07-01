@@ -21,6 +21,9 @@ if (!defined('_PS_VERSION_')) {
     exit;
 }
 
+use PrestaShop\PrestaShop\Core\Product\ProductExtraContent;
+require_once _PS_MODULE_DIR_.'everpsclickandcollect/models/EverpsclickandcollectStoreStock.php';
+
 class Everpsclickandcollect extends CarrierModule
 {
     private $html;
@@ -31,7 +34,7 @@ class Everpsclickandcollect extends CarrierModule
     {
         $this->name = 'everpsclickandcollect';
         $this->tab = 'shipping_logistics';
-        $this->version = '2.1.4';
+        $this->version = '2.1.5';
         $this->author = 'Team Ever';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -54,6 +57,11 @@ class Everpsclickandcollect extends CarrierModule
         $this->addCarrier();
 
         return parent::install() &&
+            // $this->installModuleTab(
+            //     'AdminEverPsClickAndCollect',
+            //     'AdminParentShipping',
+            //     $this->l('Click And Collect')
+            // ) &&
             $this->registerHook('header') &&
             $this->registerHook('backOfficeHeader') &&
             $this->registerHook('displayCarrierExtraContent') &&
@@ -61,8 +69,14 @@ class Everpsclickandcollect extends CarrierModule
             $this->registerHook('displayPDFDeliverySlip') &&
             $this->registerHook('displayPDFInvoice') &&
             $this->registerHook('displayAdminOrder') &&
-            // $this->registerHook('actionEmailSendBefore') &&
-            $this->registerHook('updateCarrier');
+            $this->registerHook('actionEmailSendBefore') &&
+            $this->registerHook('actionUpdateQuantity') &&
+            $this->registerHook('updateCarrier') &&
+            $this->registerHook('displayAdminProductsQuantitiesStepBottom') &&
+            $this->registerHook('actionObjectProductUpdateAfter') &&
+            $this->registerHook('displayProductExtraContent') &&
+            $this->registerHook('actionUpdateQuantity') &&
+            $this->registerHook('actionObjectProductDeleteAfter');
     }
 
     public function uninstall()
@@ -75,7 +89,35 @@ class Everpsclickandcollect extends CarrierModule
         $carrier->delete();
         Configuration::deleteByName('EVERPSCLICKANDCOLLECT_CARRIER_ID');
         Configuration::deleteByName('EVERPSCLICKANDCOLLECT_ASK_DATE');
+        // return parent::uninstall()
+        //     && $this->uninstallModuleTab('AdminEverPsClickAndCollect');
         return parent::uninstall();
+    }
+
+    private function installModuleTab($tabClass, $parent, $tabName)
+    {
+        $tab = new Tab();
+        $tab->active = 1;
+        $tab->class_name = $tabClass;
+        $tab->id_parent = (int)Tab::getIdFromClassName($parent);
+        $tab->position = Tab::getNewLastPosition($tab->id_parent);
+        $tab->module = $this->name;
+        if ($tabClass == 'AdminEverPsBlog' && $this->isSeven) {
+            $tab->icon = 'icon-team-ever';
+        }
+
+        foreach (Language::getLanguages(false) as $lang) {
+            $tab->name[(int)$lang['id_lang']] = $tabName;
+        }
+
+        return $tab->add();
+    }
+
+    private function uninstallModuleTab($tabClass)
+    {
+        $tab = new Tab((int)Tab::getIdFromClassName($tabClass));
+
+        return $tab->delete();
     }
 
     /**
@@ -83,12 +125,34 @@ class Everpsclickandcollect extends CarrierModule
      */
     public function getContent()
     {
+        $this->registerHook('actionEmailSendBefore');
+        $this->registerHook('actionObjectProductDeleteAfter');
+        $cron = $this->context->link->getModuleLink(
+            $this->name,
+            'cron',
+            array(
+                'token' => Tools::encrypt($this->name.'/cron')
+            ),
+            true,
+            (int)$this->context->language->id,
+            (int)$this->context->shop->id
+        );
         if (((bool)Tools::isSubmit('submitEverpsclickandcollectModule')) == true) {
             $this->postValidation();
 
             if (!count($this->postErrors)) {
                 $this->postProcess();
             }
+        }
+        if (((bool)Tools::isSubmit('submitImportStock')) == true) {
+            $this->importStockFromCsv(
+                (int)Context::getContext()->shop->id
+            );
+        }
+        if (((bool)Tools::isSubmit('submitExportStock')) == true) {
+            $this->exportStoreStockToCsv(
+                (int)Context::getContext()->shop->id
+            );
         }
         if (count($this->postErrors)) {
             foreach ($this->postErrors as $error) {
@@ -102,6 +166,8 @@ class Everpsclickandcollect extends CarrierModule
         }
         $this->context->smarty->assign(array(
             'everpsclickandcollect_dir' => $this->_path,
+            'everpsclickandcollect_cron' => $cron,
+            'stock_file' => _PS_MODULE_DIR_.'everpsclickandcollect/views/import/store_stock.csv',
         ));
 
         $this->html .= $this->context->smarty->fetch($this->local_path.'views/templates/admin/header.tpl');
@@ -155,9 +221,18 @@ class Everpsclickandcollect extends CarrierModule
             'form' => array(
                 'legend' => array(
                 'title' => $this->l('Settings'),
-                'icon' => 'icon-cogs',
+                'icon' => 'icon-smile',
                 ),
                 'input' => array(
+                    array(
+                        'type' => 'file',
+                        'label' => $this->l('Import store stock from CSV file'),
+                        'desc' => $this->l('Will update stock for each product and store'),
+                        'hint' => $this->l('Please export store stock first'),
+                        'name' => 'store_stock_file',
+                        'display_image' => false,
+                        'required' => false
+                    ),
                     array(
                         'type' => 'select',
                         'label' => $this->l('Allowed click and collect stores'),
@@ -194,6 +269,96 @@ class Everpsclickandcollect extends CarrierModule
                             )
                         ),
                     ),
+                    array(
+                        'type' => 'switch',
+                        'label' => $this->l('Manage stock on each store and product ?'),
+                        'desc' => $this->l('Will allow you to manage stock on each store and product'),
+                        'hint' => $this->l('Else all store and product will be available for click and collect'),
+                        'name' => 'EVERPSCLICKANDCOLLECT_STOCK',
+                        'is_bool' => true,
+                        'values' => array(
+                            array(
+                                'id' => 'active_on',
+                                'value' => true,
+                                'label' => $this->l('Yes')
+                            ),
+                            array(
+                                'id' => 'active_off',
+                                'value' => false,
+                                'label' => $this->l('No')
+                            )
+                        ),
+                    ),
+                    array(
+                        'type' => 'select',
+                        'label' => $this->l('Default decrement stock on this store'),
+                        'desc' => $this->l('Store will be decremented on this store by default'),
+                        'hint' => $this->l('Please choose at least one store'),
+                        'name' => 'EVERPSCLICKANDCOLLECT_DEFAULT_STORE',
+                        'identifier' => 'name',
+                        'required' => true,
+                        'options' => array(
+                            'query' => $stores,
+                            'id' => 'id_store',
+                            'name' => 'name',
+                        ),
+                    ),
+                    array(
+                        'type' => 'switch',
+                        'label' => $this->l('Show each store stock on product page ?'),
+                        'desc' => $this->l('Will show product store stock as table on product page'),
+                        'hint' => $this->l('Else no store stock will be shown'),
+                        'name' => 'EVERPSCLICKANDCOLLECT_TAB',
+                        'is_bool' => true,
+                        'values' => array(
+                            array(
+                                'id' => 'active_on',
+                                'value' => true,
+                                'label' => $this->l('Yes')
+                            ),
+                            array(
+                                'id' => 'active_off',
+                                'value' => false,
+                                'label' => $this->l('No')
+                            )
+                        ),
+                    ),
+                    array(
+                        'type' => 'switch',
+                        'label' => $this->l('Show store image on order tunnel ?'),
+                        'desc' => $this->l('Will show each store image on order tunnel'),
+                        'hint' => $this->l('Else no store image will be shown'),
+                        'name' => 'EVERPSCLICKANDCOLLECT_IMG',
+                        'is_bool' => true,
+                        'values' => array(
+                            array(
+                                'id' => 'active_on',
+                                'value' => true,
+                                'label' => $this->l('Yes')
+                            ),
+                            array(
+                                'id' => 'active_off',
+                                'value' => false,
+                                'label' => $this->l('No')
+                            )
+                        ),
+                    ),
+                ),
+                'buttons' => array(
+                    'importStock' => array(
+                        'name' => 'submitImportStock',
+                        'type' => 'submit',
+                        'class' => 'btn btn-success pull-right',
+                        'icon' => 'process-icon-upload',
+                        'title' => $this->l('Import store stock file')
+                    ),
+                    'exportStoreStock' => array(
+                        'name' => 'submitExportStock',
+                        'type' => 'submit',
+                        'class' => 'btn btn-info pull-right',
+                        'icon' => 'process-icon-download',
+                        'title' => $this->l('Export store stock to CSV')
+                    ),
                 ),
                 'submit' => array(
                     'title' => $this->l('Save'),
@@ -213,8 +378,20 @@ class Everpsclickandcollect extends CarrierModule
                     'EVERPSCLICKANDCOLLECT_STORES_IDS'
                 )
             ),
+            'EVERPSCLICKANDCOLLECT_DEFAULT_STORE' => Configuration::get(
+                'EVERPSCLICKANDCOLLECT_DEFAULT_STORE'
+            ),
             'EVERPSCLICKANDCOLLECT_ASK_DATE' => Configuration::get(
                 'EVERPSCLICKANDCOLLECT_ASK_DATE'
+            ),
+            'EVERPSCLICKANDCOLLECT_STOCK' => Configuration::get(
+                'EVERPSCLICKANDCOLLECT_STOCK'
+            ),
+            'EVERPSCLICKANDCOLLECT_TAB' => Configuration::get(
+                'EVERPSCLICKANDCOLLECT_TAB'
+            ),
+            'EVERPSCLICKANDCOLLECT_IMG' => Configuration::get(
+                'EVERPSCLICKANDCOLLECT_IMG'
             ),
         );
     }
@@ -236,6 +413,27 @@ class Everpsclickandcollect extends CarrierModule
                     'Error : The field "Stores" is not valid'
                 );
             }
+            if (Tools::getValue('EVERPSCLICKANDCOLLECT_STOCK')
+                && !Validate::isBool(Tools::getValue('EVERPSCLICKANDCOLLECT_STOCK'))
+            ) {
+                $this->postErrors[] = $this->l(
+                    'Error : The field "Manage stock" is not valid'
+                );
+            }
+            if (Tools::getValue('EVERPSCLICKANDCOLLECT_TAB')
+                && !Validate::isBool(Tools::getValue('EVERPSCLICKANDCOLLECT_TAB'))
+            ) {
+                $this->postErrors[] = $this->l(
+                    'Error : The field "Show stock on product page" is not valid'
+                );
+            }
+            if (Tools::getValue('EVERPSCLICKANDCOLLECT_IMG')
+                && !Validate::isBool(Tools::getValue('EVERPSCLICKANDCOLLECT_IMG'))
+            ) {
+                $this->postErrors[] = $this->l(
+                    'Error : The field "Show stock on product page" is not valid'
+                );
+            }            
         }
     }
 
@@ -253,6 +451,23 @@ class Everpsclickandcollect extends CarrierModule
             json_encode(Tools::getValue('EVERPSCLICKANDCOLLECT_STORES_IDS')),
             true
         );
+        Configuration::updateValue(
+            'EVERPSCLICKANDCOLLECT_STOCK',
+            Tools::getValue('EVERPSCLICKANDCOLLECT_STOCK')
+        );
+        Configuration::updateValue(
+            'EVERPSCLICKANDCOLLECT_DEFAULT_STORE',
+            Tools::getValue('EVERPSCLICKANDCOLLECT_DEFAULT_STORE')
+        );
+        Configuration::updateValue(
+            'EVERPSCLICKANDCOLLECT_TAB',
+            Tools::getValue('EVERPSCLICKANDCOLLECT_TAB')
+        );
+        Configuration::updateValue(
+            'EVERPSCLICKANDCOLLECT_IMG',
+            Tools::getValue('EVERPSCLICKANDCOLLECT_IMG')
+        );
+        $this->postSuccess[] = $this->l('All settings have been saved');
     }
 
     public function getOrderShippingCost($params, $shipping_cost)
@@ -397,6 +612,7 @@ class Everpsclickandcollect extends CarrierModule
     public function hookDisplayCarrierExtraContent($params)
     {
         $cart = Context::getContext()->cart;
+        $cartproducts = $cart->getProducts();
         $stores = $this->getTemplateVarStores();
         $evercnc_id_store = Context::getContext()->cookie->__get('everclickncollect_id');
         $everclickncollect_date = Context::getContext()->cookie->__get('everclickncollect_date');
@@ -440,19 +656,45 @@ class Everpsclickandcollect extends CarrierModule
                     (int)$store['id_store']
                 );
             }
-            $shipping_stores[] = $store;
+            // Manage stock on each store and product if allowed
+            if ((bool)Configuration::get('EVERPSCLICKANDCOLLECT_STOCK') === true) {
+                foreach ($cartproducts as $cartproduct) {
+                    $stock = EverpsclickandcollectStoreStock::getStoreStockAvailableByProductId(
+                        (int)$store['id_store'],
+                        (int)$cartproduct['id_product'],
+                        (int)$cartproduct['id_product_attribute'],
+                        (int)Context::getContext()->shop->id
+                    );
+                    if ((int)$stock < 0 || (int)$cartproduct['cart_quantity'] > (int)$stock) {
+                        continue 2;
+                    } else {
+                        $shipping_stores[] = $store;
+                    }
+                }
+            } else {
+                $shipping_stores[] = $store;
+            }
         }
         $link = new Link();
         $ajax_url = $link->getModuleLink(
             $this->name,
             'ajaxEverShippingStore'
         );
+        if (empty($shipping_stores)) {
+            $this->smarty->assign(
+                array(
+                    'everclickncollect_id' => Configuration::get('EVERPSCLICKANDCOLLECT_CARRIER_ID')
+                )
+            );
+            return $this->display(__FILE__, 'no_carrier.tpl', $this->getCacheId());
+        }
         if ($stores && count($stores) > 0) {
             $only_one = count($stores) > 1 ? false : true;
             $this->smarty->assign(
                 array(
                     'everclickncollect_date' => $everclickncollect_date,
                     'ask_date' => Configuration::get('EVERPSCLICKANDCOLLECT_ASK_DATE'),
+                    'show_store_img' => Configuration::get('EVERPSCLICKANDCOLLECT_IMG'),
                     'only_one' => $only_one,
                     'ajax_url' => $ajax_url,
                     'stores' => $shipping_stores,
@@ -463,11 +705,96 @@ class Everpsclickandcollect extends CarrierModule
         }
     }
 
+    public function hookDisplayProductExtraContent($params)
+    {
+        if ((bool)Configuration::get('EVERPSCLICKANDCOLLECT_TAB') === false) {
+            return;
+        }
+        $product = new Product(
+            (int)$params['product']->id,
+            false,
+            (int)Context::getContext()->language->id,
+            (int)Context::getContext()->shop->id
+        );
+        $stores = $this->getTemplateVarStores();
+        $shipping_stores = array();
+        foreach ($stores as $key => $store) {
+            if ((bool)$this->isAllowedStore((int)$store['id_store']) === false) {
+                continue;
+            }
+            // Manage stock on each store and product if allowed
+            if ((bool)Configuration::get('EVERPSCLICKANDCOLLECT_STOCK') === true) {
+                // store stock depending on combinations
+                if ($product->hasCombinations()) {
+                    $attr_resumes = $product->getAttributesResume(
+                        (int)Context::getContext()->language->id
+                    );
+                    $store['has_combinations'] = true;
+                    foreach ($attr_resumes as $attr_resume) {
+                        $product_stock = EverpsclickandcollectStoreStock::getStoreStockAvailableByProductId(
+                            (int)$store['id'],
+                            (int)$product->id,
+                            (int)$attr_resume['id_product_attribute'],
+                            (int)Context::getContext()->shop->id
+                        );
+                        $store['id_product_attribute'] = (int)$attr_resume['id_product_attribute'];
+                        $store['attribute_designation'] = (string)$attr_resume['attribute_designation'];
+                        $store['qty'] = $product_stock;
+                        if ((int)$store['qty'] > 0) {
+                            $shipping_stores[] = $store;
+                        }
+                    }
+                } else {
+                    $product_stock = EverpsclickandcollectStoreStock::getStoreStockAvailableByProductId(
+                        (int)$store['id'],
+                        (int)$product->id,
+                        0,
+                        (int)Context::getContext()->shop->id
+                    );
+                    $store['qty'] = $product_stock;
+                    if ((int)$store['qty'] > 0) {
+                        $shipping_stores[] = $store;
+                    }
+                }
+                if ((int)$store['qty'] <= 0) {
+                    continue;
+                }
+            } else {
+                $shipping_stores[] = $store;
+            }
+        }
+        $link = new Link();
+        $ajax_url = $link->getModuleLink(
+            $this->name,
+            'ajaxEverShippingStore'
+        );
+        if (empty($shipping_stores)) {
+            return;
+        }
+        if ($shipping_stores && count($shipping_stores) > 0) {
+            $only_one = count($shipping_stores) > 1 ? false : true;
+            $this->context->smarty->assign(
+                array(
+                    'has_combinations' => $product->hasCombinations(),
+                    'only_one' => $only_one,
+                    'manage_stock' => Configuration::get('EVERPSCLICKANDCOLLECT_STOCK'),
+                    'shipping_stores' => $shipping_stores
+                )
+            );
+            $content = $this->context->smarty->fetch(
+                'module:everpsclickandcollect/views/templates/hook/reassurance.tpl'
+            );
+            $array = array();
+            $array[] = (new PrestaShop\PrestaShop\Core\Product\ProductExtraContent())
+                    ->setTitle($this->l('Click and collect'))
+                    ->setContent($content);
+            return $array;
+        }
+    }
+
     public function hookActionEmailSendBefore($params)
     {
-        if (isset($params['templateVars']['{id_order}'])
-            && isset($params['templateVars']['{carrier}'])
-        ) {
+        if (isset($params['templateVars']['{id_order}'])) {
             $id_order = (int)$params['templateVars'] ["{id_order}"];
             $order = new Order(
                 (int)$id_order
@@ -491,8 +818,15 @@ class Everpsclickandcollect extends CarrierModule
                         $store = $tpl_store;
                     }
                 }
+                // Replace carrier var
                 $params['templateVars'] ["{carrier}"] = $params['templateVars'] ["{carrier}"]
                 .' '
+                .$store['name']
+                .' '
+                .$store['address']['formatted'];
+                // Replace shipping number var
+                $params['templateVars'] ["{shipping_number}"] = $params['templateVars'] ["{shipping_number}"]
+                .' - '
                 .$store['name']
                 .' '
                 .$store['address']['formatted'];
@@ -512,6 +846,9 @@ class Everpsclickandcollect extends CarrierModule
         }
         $evercnc_id_store = Context::getContext()->cookie->__get('everclickncollect_id');
         $everclickncollect_date = Context::getContext()->cookie->__get('everclickncollect_date');
+        if (!empty($evercnc_id_store)) {
+            return;
+        }
         $sql = new DbQuery;
         $sql->select('*');
         $sql->from(
@@ -540,6 +877,7 @@ class Everpsclickandcollect extends CarrierModule
                 $store = $tpl_store;
             }
         }
+        // Here we should decrement store stock, but action stock hook is triggered
         if (isset($store)) {
             $this->context->smarty->assign(array(
                 'store' => $store,
@@ -682,6 +1020,224 @@ class Everpsclickandcollect extends CarrierModule
         return $stores;
     }
 
+    public function hookDisplayAdminProductsQuantitiesStepBottom($params)
+    {
+        if (!$params['id_product']) {
+            return;
+        }
+        if ((bool)Configuration::get('EVERPSCLICKANDCOLLECT_STOCK') === false) {
+            return;
+        }
+        $product = new Product(
+            (int)$params['id_product'],
+            false,
+            (int)Context::getContext()->language->id,
+            (int)Context::getContext()->shop->id
+        );
+        $shipping_stores = array();
+        $stores = $this->getTemplateVarStores();
+        foreach ($stores as $store) {
+            if ((bool)$this->isAllowedStore((int)$store['id_store']) === false) {
+                continue;
+            }
+            if ($product->hasCombinations()) {
+                $attr_resumes = $product->getAttributesResume(
+                    (int)Context::getContext()->language->id
+                );
+                $store['has_combinations'] = true;
+                foreach ($attr_resumes as $attr_resume) {
+                    $product_stock = EverpsclickandcollectStoreStock::getStoreStockAvailableByProductId(
+                        (int)$store['id'],
+                        (int)$params['id_product'],
+                        (int)$attr_resume['id_product_attribute'],
+                        (int)Context::getContext()->shop->id
+                    );
+                    $store['id_product_attribute'] = (int)$attr_resume['id_product_attribute'];
+                    $store['attribute_designation'] = (string)$attr_resume['attribute_designation'];
+                    $store['qty'] = $product_stock;
+                    $shipping_stores[] = $store;
+                }
+            } else {
+                $product_stock = EverpsclickandcollectStoreStock::getStoreStockAvailableByProductId(
+                    (int)$store['id'],
+                    (int)$params['id_product'],
+                    0,
+                    (int)Context::getContext()->shop->id
+                );
+                $store['qty'] = $product_stock;
+            }
+            $store['product_name'] = $product->name;
+            $store['id_product'] = $params['id_product'];
+            
+            $shipping_stores[] = $store;
+        }
+        $this->smarty->assign(array(
+            'shipping_stores' => (array)$shipping_stores,
+            'default_language' => $this->context->employee->id_lang,
+            'id_product' => (int)$params['id_product']
+        ));
+        return $this->display(__FILE__, 'views/templates/admin/product-tab.tpl');
+    }
+
+    public function hookActionObjectProductUpdateAfter($params)
+    {
+        if ((bool)Configuration::get('EVERPSCLICKANDCOLLECT_STOCK') === false) {
+            return;
+        }
+        $product = new Product(
+            (int)Tools::getValue('id_product'),
+            false,
+            (int)Context::getContext()->language->id,
+            (int)Context::getContext()->shop->id
+        );
+        $stores = $this->getTemplateVarStores();
+        foreach ($stores as $store) {
+            if ((bool)$this->isAllowedStore((int)$store['id_store']) === false) {
+                continue;
+            }
+            if ($product->hasCombinations()) {
+                $attr_resumes = $product->getAttributesResume(
+                    (int)Context::getContext()->language->id
+                );
+                foreach ($attr_resumes as $attr_resume) {
+                    $qty_value = 'everpsclickandcollect_qty_'
+                    .(int)$store['id']
+                    .(int)$attr_resume['id_product_attribute'];
+                    EverpsclickandcollectStoreStock::setQuantity(
+                        (int)$store['id'],
+                        (int)Tools::getValue('id_product'),
+                        (int)$attr_resume['id_product_attribute'],
+                        (int)Tools::getValue($qty_value),
+                        (int)Context::getContext()->shop->id
+                    );
+                }
+            } else {
+                $qty_value = 'everpsclickandcollect_qty_'.(int)$store['id'];
+                EverpsclickandcollectStoreStock::setQuantity(
+                    (int)$store['id'],
+                    (int)Tools::getValue('id_product'),
+                    0,
+                    (int)Tools::getValue($qty_value),
+                    (int)Context::getContext()->shop->id
+                );
+            }
+        }
+    }
+
+    public function hookActionUpdateQuantity($params)
+    {
+        $controllerTypes = array('front', 'modulefront');
+        if (!in_array(Context::getContext()->controller->controller_type, $controllerTypes)) {
+            return;
+        }
+        // If id store exists on customer cookie, let's lower stock
+        $evercnc_id_store = Context::getContext()->cookie->__get('everclickncollect_id');
+        if (isset($evercnc_id_store)
+            && !empty($evercnc_id_store)
+        ) {
+            $evercnc_id_store = (int)Configuration::get('EVERPSCLICKANDCOLLECT_DEFAULT_STORE');
+        }
+        EverpsclickandcollectStoreStock::setQuantity(
+            (int)$evercnc_id_store,
+            (int)$params['id_product'],
+            (int)$params['id_product_attribute'],
+            (int)$params['quantity'],
+            (int)Context::getContext()->shop->id
+        );
+    }
+
+    public function hookActionObjectProductDeleteAfter($params)
+    {
+        EverpsclickandcollectStoreStock::dropProductStock(
+            (int)$params['object']->id
+        );
+    }
+
+    public function hookActionObjectStoreDeleteAfter($params)
+    {
+        EverpsclickandcollectStoreStock::dropStoreStock(
+            (int)$params['object']->id
+        );
+    }
+
+    public function hookActionAttributeCombinationDelete($params)
+    {
+        EverpsclickandcollectStoreStock::dropStoreStock(
+            (int)$params['object']->id
+        );
+    }
+
+    private function exportStoreStockToCsv()
+    {
+        $objects = EverpsclickandcollectStoreStock::getStoresStocksObjects();
+        $csv_datas = array();
+        foreach ($objects as $obj) {
+            $csv_datas[] = array(
+                utf8_decode($obj->id_store),
+                utf8_decode($obj->id_product),
+                utf8_decode($obj->id_product_attribute),
+                utf8_decode($obj->reference),
+                utf8_decode($obj->product_name),
+                utf8_decode($obj->attribute_designation),
+                utf8_decode($obj->store_name),
+                utf8_decode($obj->qty),
+            );
+        }
+        // output headers so that the file is downloaded rather than displayed
+        header('Content-type: text/csv');
+        header('Content-Disposition: attachment; filename="store_stock.csv"');
+         
+        // do not cache the file
+        header('Pragma: no-cache');
+        header('Expires: 0');
+         
+        // create a file pointer connected to the output stream
+        $file = fopen('php://output', 'w');
+        // send the column headers
+        fputcsv(
+            $file,
+            array(
+                $this->l('ID store *'),
+                $this->l('ID product *'),
+                $this->l('ID product attribute *'),
+                $this->l('Reference'),
+                $this->l('Product name'),
+                $this->l('Attribute designation'),
+                $this->l('Store name'),
+                $this->l('Quantity *')
+            ),
+            ';'
+        );
+         
+        // output each row of the data
+        foreach ($csv_datas as $row) {
+            fputcsv($file, $row, ';');
+        }
+        exit();
+    }
+
+    private function importStockFromCsv()
+    {
+        if (isset($_FILES['store_stock_file'])
+            && isset($_FILES['store_stock_file']['tmp_name'])
+            && !empty($_FILES['store_stock_file']['tmp_name'])
+        ) {
+            $csvData = array_map('str_getcsv', file($_FILES['store_stock_file']['tmp_name']));
+            foreach ($csvData as $key => $line) {
+                if ($key == 0) {
+                    continue;
+                }
+                $line_datas = explode(';', $line[0]);
+                EverpsclickandcollectStoreStock::importStoreStock(
+                    $line_datas,
+                    (int)Context::getContext()->shop->id
+                );
+            }
+        }
+        $this->postSuccess[] = $this->l('Stores stock has been updated');
+        return true;
+    }
+
     public function checkLatestEverModuleVersion($module, $version)
     {
         $upgrade_link = 'https://upgrade.team-ever.com/upgrade.php?module='
@@ -692,11 +1248,10 @@ class Everpsclickandcollect extends CarrierModule
         curl_setopt($handle, CURLOPT_RETURNTRANSFER, true);
         curl_exec($handle);
         $httpCode = curl_getinfo($handle, CURLINFO_HTTP_CODE);
+        curl_close($handle);
         if ($httpCode != 200) {
-            curl_close($handle);
             return false;
         }
-        curl_close($handle);
         $module_version = Tools::file_get_contents(
             $upgrade_link
         );

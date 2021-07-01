@@ -1,5 +1,4 @@
-<?php
-/**
+{*
  * 2019-2021 Team Ever
  *
  * NOTICE OF LICENSE
@@ -15,18 +14,7 @@
  *  @author    Team Ever <https://www.team-ever.com/>
  *  @copyright 2019-2021 Team Ever
  *  @license   http://opensource.org/licenses/afl-3.0.php  Academic Free License (AFL 3.0)
- */
-
-if (!defined('_PS_VERSION_')) {
-    exit;
-}
-
-$sql = array();
-$sql[] = 'DROP TABLE IF EXISTS `'._DB_PREFIX_.'everpsclickandcollect`';
-$sql[] = 'DROP TABLE IF EXISTS `'._DB_PREFIX_.'everpsclickandcollect_store_stock`';
-
-foreach ($sql as $query) {
-    if (Db::getInstance()->execute($query) == false) {
-        return false;
-    }
-}
+*}
+<div class="alert alert-warning" id="everclickncollect_id" data-evercnccarrier="{$everclickncollect_id|escape:'htmlall':'UTF-8'}">
+	{l s='There is no click and collect available with this cart. Please select another delivery method or lower products quantity on your cart.' mod='everpsclickandcollect'}
+</div>

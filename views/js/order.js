@@ -26,6 +26,12 @@ $(document).ready(function() {
 			
 		});
 	}
+	// TODO
+	// if (!$('#everclickncollect_id #store_depot_list input[type=radio]').length) {
+	// 	$('#delivery_option_' + everclickncollect_id).parent().parent().parent().remove();
+	// 	$('#everclickncollect_id').remove();
+	// 	var next_method = $('.delivery-options .delivery-option').first().find('custom-radio input').hide();
+	// }
 	$('#everclickncollect_id #store_depot_list input[type=radio]').click(function(e){
 		if ($('#everclickncollect_id .store_date_' + $(this).val() ).length) {
 			var selected_date = $('#everclickncollect_id .store_date_' + $(this).val() ).val();

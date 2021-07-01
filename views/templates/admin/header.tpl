@@ -24,6 +24,11 @@
 				<strong>{l s='Welcome to Ever PS Click & Collect !' mod='everpsclickandcollect'}</strong><br />
 				{l s='Thanks for using Team Ever\'s module' mod='everpsclickandcollect'}</a><br />
 			</p>
+            <p class="alert alert-info">
+                {l s='You can add your stock file on this folder : ' mod='everpsclickandcollect'} {$stock_file|escape:'htmlall':'UTF-8'}
+            </p>
+            <a href="{$everpsclickandcollect_cron|escape:'htmlall':'UTF-8'}" target="_blank" class="btn btn-success"> {l s='Trigger stock update cron' mod='everpsclickandcollect'}
+            </a>
         </div>
         <div class="col-xs-12 col-lg-6">
             <p class="alert alert-warning">
@@ -32,7 +37,7 @@
             <form action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_top">
             <input type="hidden" name="cmd" value="_s-xclick" />
             <input type="hidden" name="hosted_button_id" value="3LE8ABFYJKP98" />
-            <input type="image" src="https://www.team-ever.com/wp-content/uploads/2019/06/appel_a_dons-1.jpg" border="0" name="submit" title="{l s='This module is free and will always be ! You can support our free modules by making a donation by clicking the button below' mod='everpsblog'}" alt="{l s='This module is free and will always be ! You can support our free modules by making a donation by clicking the button below' mod='everpsblog'}" />
+            <input type="image" src="https://www.team-ever.com/wp-content/uploads/2019/06/appel_a_dons-1.jpg" border="0" name="submit" title="{l s='This module is free and will always be ! You can support our free modules by making a donation by clicking the button below' mod='everpsclickandcollect'}" alt="{l s='This module is free and will always be ! You can support our free modules by making a donation by clicking the button below' mod='everpsclickandcollect'}" />
             <img alt="" border="0" src="https://www.paypal.com/fr_FR/i/scr/pixel.gif" width="1" height="1" />
             </form>
         </div>

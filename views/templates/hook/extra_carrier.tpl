@@ -15,8 +15,8 @@
  *  @copyright 2019-2021 Team Ever
  *  @license   http://opensource.org/licenses/afl-3.0.php  Academic Free License (AFL 3.0)
 *}
-<div class="alert alert-info" id="everclickncollect_id" data-evercncurl="{$ajax_url|escape:'htmlall':'UTF-8'}" data-evercnccarrier="{$everclickncollect_id|escape:'htmlall':'UTF-8'}">
-	<table id="store_depot_list" class="table table-striped table-bordered table-labeled hidden-sm-down">
+<div class="alert alert-info col-12" id="everclickncollect_id" data-evercncurl="{$ajax_url|escape:'htmlall':'UTF-8'}" data-evercnccarrier="{$everclickncollect_id|escape:'htmlall':'UTF-8'}">
+	<table id="store_depot_list" class="table table-striped table-bordered table-labeled">
 		<th class="text-center">{l s='Store' mod='everpsclickandcollect'}</th>
 		{if isset($ask_date) && $ask_date}
 		<th class="text-center">{l s='Choose date' mod='everpsclickandcollect'}</th>
@@ -25,8 +25,10 @@
 		{foreach from=$stores item=store}
 		<tr class="carrier_depot_item">
 			<td class="text-center">
+				{if isset($show_store_img) && $show_store_img}
 				<img src="{$store.image.bySize.stores_default.url|escape:'htmlall':'UTF-8'}" alt="{$store.image.legend|escape:'htmlall':'UTF-8'}" title="{$store.image.legend nofilter}"><br>
 				{$store.name|escape:'htmlall':'UTF-8'}<br>
+				{/if}
 				{$store.address.formatted nofilter}
 			</td>
 			{if isset($ask_date) && $ask_date}

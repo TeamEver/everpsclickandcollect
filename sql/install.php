@@ -31,6 +31,16 @@ $sql[] = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'everpsclickandcollect` 
     PRIMARY KEY  (`id_cart`)
 ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8;';
 
+$sql[] = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'everpsclickandcollect_store_stock` (
+    `id_everpsclickandcollect_store_stock` int(11) NOT NULL auto_increment,
+    `id_store` int(11) NOT NULL,
+    `id_product` int(11) NOT NULL,
+    `id_product_attribute` int(11) NOT NULL,
+    `id_shop` int(11) NOT NULL,
+    `qty` varchar(255) NOT NULL,
+    PRIMARY KEY  (`id_everpsclickandcollect_store_stock`)
+) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8;';
+
 foreach ($sql as $query) {
     if (Db::getInstance()->execute($query) == false) {
         return false;
