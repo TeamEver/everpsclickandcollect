@@ -4,3 +4,40 @@
 .text-center{
 	text-align: center;
 }
+@media only screen and (max-width: 760px),
+(min-device-width: 768px) and (max-device-width: 1024px)  {
+
+	/* Force table to not be like tables anymore */
+	#store_depot_list, #store_depot_list thead, #store_depot_list tbody, #store_depot_list th, #store_depot_list td, #store_depot_list tr { 
+		display: block; 
+	}
+	#store_depot_list th{
+		display: none;
+	}
+	/* Hide table headers (but not display: none;, for accessibility) */
+	#store_depot_list thead tr { 
+		position: absolute;
+		top: -9999px;
+		left: -9999px;
+	}
+	
+	#store_depot_list tr { border: 1px solid #ccc; }
+	
+	#store_depot_list td { 
+		/* Behave  like a "row" */
+		border: none;
+		border-bottom: 1px solid #eee; 
+		position: relative;
+	}
+	
+	#store_depot_list td:before { 
+		/* Now like a table header */
+		position: absolute;
+		/* Top/left values mimic padding */
+		top: 6px;
+		left: 6px;
+		width: 45%; 
+		padding-right: 10px; 
+		white-space: nowrap;
+	}
+}

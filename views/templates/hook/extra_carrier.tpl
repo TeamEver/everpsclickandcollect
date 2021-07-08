@@ -16,7 +16,7 @@
  *  @license   http://opensource.org/licenses/afl-3.0.php  Academic Free License (AFL 3.0)
 *}
 <div class="alert alert-info col-12" id="everclickncollect_id" data-evercncurl="{$ajax_url|escape:'htmlall':'UTF-8'}" data-evercnccarrier="{$everclickncollect_id|escape:'htmlall':'UTF-8'}">
-	<table id="store_depot_list" class="table table-striped table-bordered table-labeled">
+	<table id="store_depot_list" class="table table-striped table-bordered table-labeled table-responsive">
 		<th class="text-center">{l s='Store' mod='everpsclickandcollect'}</th>
 		{if isset($ask_date) && $ask_date}
 		<th class="text-center">{l s='Choose date' mod='everpsclickandcollect'}</th>
