@@ -34,7 +34,7 @@ class Everpsclickandcollect extends CarrierModule
     {
         $this->name = 'everpsclickandcollect';
         $this->tab = 'shipping_logistics';
-        $this->version = '2.1.7';
+        $this->version = '2.2.1';
         $this->author = 'Team Ever';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -343,6 +343,15 @@ class Everpsclickandcollect extends CarrierModule
                             )
                         ),
                     ),
+                    array(
+                        'type' => 'textarea',
+                        'lang' => true,
+                        'label' => $this->l('Custom message on order tunnel'),
+                        'desc' => $this->l('Please add custom order tunnel message'),
+                        'hint' => $this->l('Will be shown before stores list'),
+                        'name' => 'EVERPSCLICKANDCOLLECT_MSG',
+                        'required' => false,
+                    ),
                 ),
                 'buttons' => array(
                     'importStock' => array(
@@ -433,7 +442,17 @@ class Everpsclickandcollect extends CarrierModule
                 $this->postErrors[] = $this->l(
                     'Error : The field "Show stock on product page" is not valid'
                 );
-            }            
+            }
+            // Multilingual validation
+            foreach (Language::getLanguages(false) as $lang) {
+                if (Tools::getValue('EVERPSCLICKANDCOLLECT_MSG_'.$lang['id_lang'])
+                    && !Validate::isCleanHtml(Tools::getValue('EVERPSCLICKANDCOLLECT_MSG_'.$lang['id_lang']))
+                ) {
+                    $this->postErrors[] = $this->l(
+                        'Error: message is not valid for lang '
+                    ).$lang['iso_code'];
+                }
+            }
         }
     }
 
@@ -442,6 +461,16 @@ class Everpsclickandcollect extends CarrierModule
      */
     protected function postProcess()
     {
+        $msg = array();
+        foreach (Language::getLanguages(false) as $lang) {
+            $msg[$lang['id_lang']] = (
+                Tools::getValue('EVERPSCLICKANDCOLLECT_MSG_'
+                    .$lang['id_lang'])
+            ) ? Tools::getValue(
+                'EVERPSCLICKANDCOLLECT_MSG_'
+                .$lang['id_lang']
+            ) : '';
+        }
         Configuration::updateValue(
             'EVERPSCLICKANDCOLLECT_ASK_DATE',
             Tools::getValue('EVERPSCLICKANDCOLLECT_ASK_DATE')
@@ -466,6 +495,11 @@ class Everpsclickandcollect extends CarrierModule
         Configuration::updateValue(
             'EVERPSCLICKANDCOLLECT_IMG',
             Tools::getValue('EVERPSCLICKANDCOLLECT_IMG')
+        );
+        Configuration::updateValue(
+            'EVERPSCLICKANDCOLLECT_MSG',
+            $msg,
+            true
         );
         $this->postSuccess[] = $this->l('All settings have been saved');
     }
@@ -616,6 +650,8 @@ class Everpsclickandcollect extends CarrierModule
         $stores = $this->getTemplateVarStores();
         $evercnc_id_store = Context::getContext()->cookie->__get('everclickncollect_id');
         $everclickncollect_date = Context::getContext()->cookie->__get('everclickncollect_date');
+        $msg = Configuration::getInt('EVERPSCLICKANDCOLLECT_MSG');
+        $custom_msg = $msg[(int)Context::getContext()->language->id];
         $shipping_stores = array();
         foreach ($stores as $key => $store) {
             if ((bool)$this->isAllowedStore((int)$store['id_store']) === false) {
@@ -692,6 +728,7 @@ class Everpsclickandcollect extends CarrierModule
             $only_one = count($stores) > 1 ? false : true;
             $this->smarty->assign(
                 array(
+                    'custom_msg' => $custom_msg,
                     'everclickncollect_date' => $everclickncollect_date,
                     'ask_date' => Configuration::get('EVERPSCLICKANDCOLLECT_ASK_DATE'),
                     'show_store_img' => Configuration::get('EVERPSCLICKANDCOLLECT_IMG'),
