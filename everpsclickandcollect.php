@@ -23,6 +23,7 @@ if (!defined('_PS_VERSION_')) {
 
 use PrestaShop\PrestaShop\Core\Product\ProductExtraContent;
 require_once _PS_MODULE_DIR_.'everpsclickandcollect/models/EverpsclickandcollectStoreStock.php';
+require_once _PS_MODULE_DIR_.'everpsclickandcollect/models/EverpsclickandcollectStore.php';
 
 class Everpsclickandcollect extends CarrierModule
 {
@@ -34,7 +35,7 @@ class Everpsclickandcollect extends CarrierModule
     {
         $this->name = 'everpsclickandcollect';
         $this->tab = 'shipping_logistics';
-        $this->version = '2.2.1';
+        $this->version = '2.3.4';
         $this->author = 'Team Ever';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -57,11 +58,11 @@ class Everpsclickandcollect extends CarrierModule
         $this->addCarrier();
 
         return parent::install() &&
-            // $this->installModuleTab(
-            //     'AdminEverPsClickAndCollect',
-            //     'AdminParentShipping',
-            //     $this->l('Click And Collect')
-            // ) &&
+            $this->installModuleTab(
+                'AdminEverPsClickAndCollect',
+                'AdminParentStores',
+                $this->l('Click & collect')
+            ) &&
             $this->registerHook('header') &&
             $this->registerHook('backOfficeHeader') &&
             $this->registerHook('displayCarrierExtraContent') &&
@@ -74,6 +75,7 @@ class Everpsclickandcollect extends CarrierModule
             $this->registerHook('updateCarrier') &&
             $this->registerHook('displayAdminProductsQuantitiesStepBottom') &&
             $this->registerHook('actionObjectProductUpdateAfter') &&
+            $this->registerHook('displayReassurance') &&
             $this->registerHook('displayProductExtraContent') &&
             $this->registerHook('actionUpdateQuantity') &&
             $this->registerHook('actionObjectProductDeleteAfter');
@@ -89,9 +91,8 @@ class Everpsclickandcollect extends CarrierModule
         $carrier->delete();
         Configuration::deleteByName('EVERPSCLICKANDCOLLECT_CARRIER_ID');
         Configuration::deleteByName('EVERPSCLICKANDCOLLECT_ASK_DATE');
-        // return parent::uninstall()
-        //     && $this->uninstallModuleTab('AdminEverPsClickAndCollect');
-        return parent::uninstall();
+        return parent::uninstall()
+            && $this->uninstallModuleTab('AdminEverPsClickAndCollect');
     }
 
     private function installModuleTab($tabClass, $parent, $tabName)
@@ -381,6 +382,16 @@ class Everpsclickandcollect extends CarrierModule
      */
     protected function getConfigFormValues()
     {
+        $msg = array();
+        foreach (Language::getLanguages(false) as $lang) {
+            $msg[$lang['id_lang']] = (
+                Tools::getValue('EVERPSCLICKANDCOLLECT_MSG_'
+                    .$lang['id_lang'])
+            ) ? Tools::getValue(
+                'EVERPSCLICKANDCOLLECT_MSG_'
+                .$lang['id_lang']
+            ) : '';
+        }
         return array(
             'EVERPSCLICKANDCOLLECT_STORES_IDS[]' => json_decode(
                 Configuration::get(
@@ -401,6 +412,11 @@ class Everpsclickandcollect extends CarrierModule
             ),
             'EVERPSCLICKANDCOLLECT_IMG' => Configuration::get(
                 'EVERPSCLICKANDCOLLECT_IMG'
+            ),
+            'EVERPSCLICKANDCOLLECT_MSG' => (!empty(
+                $msg[(int)Configuration::get('PS_LANG_DEFAULT')]
+            )) ? $msg : Configuration::getInt(
+                'EVERPSCLICKANDCOLLECT_MSG'
             ),
         );
     }
@@ -615,6 +631,9 @@ class Everpsclickandcollect extends CarrierModule
             $this->context->controller->addJS($this->_path.'views/js/back.js');
             $this->context->controller->addCSS($this->_path.'views/css/back.css');
         }
+        if (Tools::getIsset('id_everpsclickandcollect_store')) {
+            $this->context->controller->addJS($this->_path.'views/js/everpsclickandcollect.js');
+        }
     }
 
     /**
@@ -704,11 +723,19 @@ class Everpsclickandcollect extends CarrierModule
                     if ((int)$stock < 0 || (int)$cartproduct['cart_quantity'] > (int)$stock) {
                         continue 2;
                     } else {
-                        $shipping_stores[] = $store;
+                        $store_hours = EverpsclickandcollectStore::getByIdStore(
+                            (int)$store['id_store']
+                        );
+                        $obj_merged = (array)array_merge((array)$store, (array)$store_hours);
+                        $shipping_stores[] = $obj_merged;
                     }
                 }
             } else {
-                $shipping_stores[] = $store;
+                $store_hours = EverpsclickandcollectStore::getByIdStore(
+                    (int)$store['id_store']
+                );
+                $obj_merged = (array)array_merge((array)$store, (array)$store_hours);
+                $shipping_stores[] = $obj_merged;
             }
         }
         $link = new Link();
@@ -740,6 +767,101 @@ class Everpsclickandcollect extends CarrierModule
             );
             return $this->display(__FILE__, 'extra_carrier.tpl', $this->getCacheId());
         }
+    }
+
+    public function hookDisplayReassurance($params)
+    {
+        if (!Tools::getValue('id_product')) {
+            return;
+        }
+        $product = new Product(
+            (int)Tools::getValue('id_product'),
+            false,
+            (int)Context::getContext()->language->id,
+            (int)Context::getContext()->shop->id
+        );
+        $stores = $this->getTemplateVarStores();
+        $shipping_stores = array();
+        foreach ($stores as $key => $store) {
+            if ((bool)$this->isAllowedStore((int)$store['id_store']) === false) {
+                continue;
+            }
+            // Manage stock on each store and product if allowed
+            if ((bool)Configuration::get('EVERPSCLICKANDCOLLECT_STOCK') === true) {
+                // store stock depending on combinations
+                if ($product->hasCombinations()) {
+                    $attr_resumes = $product->getAttributesResume(
+                        (int)Context::getContext()->language->id
+                    );
+                    $store['has_combinations'] = true;
+                    foreach ($attr_resumes as $attr_resume) {
+                        $product_stock = EverpsclickandcollectStoreStock::getStoreStockAvailableByProductId(
+                            (int)$store['id'],
+                            (int)$product->id,
+                            (int)$attr_resume['id_product_attribute'],
+                            (int)Context::getContext()->shop->id
+                        );
+                        $store['id_product_attribute'] = (int)$attr_resume['id_product_attribute'];
+                        $store['attribute_designation'] = (string)$attr_resume['attribute_designation'];
+                        $store['qty'] = $product_stock;
+                        if ((int)$store['qty'] > 0) {
+                            $store_hours = EverpsclickandcollectStore::getByIdStore(
+                                (int)$store['id_store']
+                            );
+                            $obj_merged = (array)array_merge((array)$store, (array)$store_hours);
+                            $shipping_stores[] = $obj_merged;
+                        }
+                    }
+                } else {
+                    $product_stock = EverpsclickandcollectStoreStock::getStoreStockAvailableByProductId(
+                        (int)$store['id'],
+                        (int)$product->id,
+                        0,
+                        (int)Context::getContext()->shop->id
+                    );
+                    $store['qty'] = $product_stock;
+                    if ((int)$store['qty'] > 0) {
+                        $store_hours = EverpsclickandcollectStore::getByIdStore(
+                            (int)$store['id_store']
+                        );
+                        $obj_merged = (array)array_merge((array)$store, (array)$store_hours);
+                        $shipping_stores[] = $obj_merged;
+                    }
+                }
+                if ((int)$store['qty'] <= 0) {
+                    continue;
+                }
+            } else {
+                $store_hours = EverpsclickandcollectStore::getByIdStore(
+                    (int)$store['id_store']
+                );
+                $obj_merged = (array)array_merge((array)$store, (array)$store_hours);
+                $shipping_stores[] = $obj_merged;
+            }
+        }
+        $link = new Link();
+        $ajax_url = $link->getModuleLink(
+            $this->name,
+            'ajaxEverShippingStore'
+        );
+        if (empty($shipping_stores)) {
+            return;
+        }
+        if ($shipping_stores && count($shipping_stores) > 0) {
+            $only_one = count($shipping_stores) > 1 ? false : true;
+            $this->context->smarty->assign(
+                array(
+                    'has_combinations' => $product->hasCombinations(),
+                    'only_one' => $only_one,
+                    'manage_stock' => Configuration::get('EVERPSCLICKANDCOLLECT_STOCK'),
+                    'shipping_stores' => $shipping_stores
+                )
+            );
+            return $this->context->smarty->fetch(
+                'module:everpsclickandcollect/views/templates/hook/reassurance.tpl'
+            );
+        }
+
     }
 
     public function hookDisplayProductExtraContent($params)
@@ -778,7 +900,11 @@ class Everpsclickandcollect extends CarrierModule
                         $store['attribute_designation'] = (string)$attr_resume['attribute_designation'];
                         $store['qty'] = $product_stock;
                         if ((int)$store['qty'] > 0) {
-                            $shipping_stores[] = $store;
+                            $store_hours = EverpsclickandcollectStore::getByIdStore(
+                                (int)$store['id_store']
+                            );
+                            $obj_merged = (array)array_merge((array)$store, (array)$store_hours);
+                            $shipping_stores[] = $obj_merged;
                         }
                     }
                 } else {
@@ -790,14 +916,22 @@ class Everpsclickandcollect extends CarrierModule
                     );
                     $store['qty'] = $product_stock;
                     if ((int)$store['qty'] > 0) {
-                        $shipping_stores[] = $store;
+                        $store_hours = EverpsclickandcollectStore::getByIdStore(
+                            (int)$store['id_store']
+                        );
+                        $obj_merged = (array)array_merge((array)$store, (array)$store_hours);
+                        $shipping_stores[] = $obj_merged;
                     }
                 }
                 if ((int)$store['qty'] <= 0) {
                     continue;
                 }
             } else {
-                $shipping_stores[] = $store;
+                $store_hours = EverpsclickandcollectStore::getByIdStore(
+                    (int)$store['id_store']
+                );
+                $obj_merged = (array)array_merge((array)$store, (array)$store_hours);
+                $shipping_stores[] = $obj_merged;
             }
         }
         $link = new Link();
@@ -831,7 +965,10 @@ class Everpsclickandcollect extends CarrierModule
 
     public function hookActionEmailSendBefore($params)
     {
-        if (isset($params['templateVars']['{id_order}'])) {
+        if (isset($params['templateVars']['{id_order}'])
+            && isset($params['templateVars']['{carrier}'])
+            && isset($params['templateVars']['{shipping_number}'])
+        ) {
             $id_order = (int)$params['templateVars'] ["{id_order}"];
             $order = new Order(
                 (int)$id_order
@@ -911,7 +1048,11 @@ class Everpsclickandcollect extends CarrierModule
         $stores = $this->getTemplateVarStores();
         foreach ($stores as $tpl_store) {
             if ((int)$tpl_store['id_store'] == (int)$clickncollect['id_store']) {
-                $store = $tpl_store;
+                $store_hours = EverpsclickandcollectStore::getByIdStore(
+                    (int)$tpl_store['id_store']
+                );
+                $obj_merged = (array)array_merge((array)$tpl_store, (array)$store_hours);
+                $store = $obj_merged;
             }
         }
         // Here we should decrement store stock, but action stock hook is triggered
@@ -948,7 +1089,11 @@ class Everpsclickandcollect extends CarrierModule
             $stores = $this->getTemplateVarStores();
             foreach ($stores as $tpl_store) {
                 if ((int)$tpl_store['id_store'] == (int)$clickncollect['id_store']) {
-                    $store = $tpl_store;
+                    $store_hours = EverpsclickandcollectStore::getByIdStore(
+                        (int)$tpl_store['id_store']
+                    );
+                    $obj_merged = (array)array_merge((array)$tpl_store, (array)$store_hours);
+                    $store = $obj_merged;
                 }
             }
             $this->context->smarty->assign(array(
@@ -986,7 +1131,11 @@ class Everpsclickandcollect extends CarrierModule
             $stores = $this->getTemplateVarStores();
             foreach ($stores as $tpl_store) {
                 if ((int)$tpl_store['id_store'] == (int)$clickncollect['id_store']) {
-                    $store = $tpl_store;
+                    $store_hours = EverpsclickandcollectStore::getByIdStore(
+                        (int)$tpl_store['id_store']
+                    );
+                    $obj_merged = (array)array_merge((array)$tpl_store, (array)$store_hours);
+                    $store = $obj_merged;
                 }
             }
             $this->context->smarty->assign(array(
@@ -1024,34 +1173,57 @@ class Everpsclickandcollect extends CarrierModule
             // Required for trad
             $temp = json_decode($store['hours'], true);
             unset($store['hours']);
-            $store['business_hours'] = [
-                [
+            $store['business_hours'] = array();
+            if (!empty($temp[0][0])) {
+                $store['business_hours'][] = array(
                     'day' => $this->trans('Monday', [], 'Shop.Theme.Global'),
                     'hours' => $temp[0],
-                ], [
+                );
+            }
+            if (!empty($temp[1][0])) {
+                $store['business_hours'][] = array(
                     'day' => $this->trans('Tuesday', [], 'Shop.Theme.Global'),
                     'hours' => $temp[1],
-                ], [
+                );
+            }
+            if (!empty($temp[2][0])) {
+                $store['business_hours'][] = array(
                     'day' => $this->trans('Wednesday', [], 'Shop.Theme.Global'),
                     'hours' => $temp[2],
-                ], [
+                );
+            }
+            if (!empty($temp[3][0])) {
+                $store['business_hours'][] = array(
                     'day' => $this->trans('Thursday', [], 'Shop.Theme.Global'),
                     'hours' => $temp[3],
-                ], [
+                );
+            }
+            if (!empty($temp[4][0])) {
+                $store['business_hours'][] = array(
                     'day' => $this->trans('Friday', [], 'Shop.Theme.Global'),
                     'hours' => $temp[4],
-                ], [
+                );
+            }
+            if (!empty($temp[5][0])) {
+                $store['business_hours'][] = array(
                     'day' => $this->trans('Saturday', [], 'Shop.Theme.Global'),
                     'hours' => $temp[5],
-                ], [
+                );
+            }
+            if (!empty($temp[6][0])) {
+                $store['business_hours'][] = array(
                     'day' => $this->trans('Sunday', [], 'Shop.Theme.Global'),
                     'hours' => $temp[6],
-                ],
-            ];
+                );
+            }
             $store['image'] = $imageRetriever->getImage(new Store($store['id_store']), $store['id_store']);
             if (is_array($store['image'])) {
                 $store['image']['legend'] = $store['image']['legend'][$this->context->language->id];
             }
+            $store_hours = EverpsclickandcollectStore::getByIdStore(
+                (int)$store['id_store']
+            );
+            $store = (array)array_merge((array)$store, (array)$store_hours);
         }
 
         return $stores;

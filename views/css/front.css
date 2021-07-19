@@ -4,6 +4,10 @@
 .text-center{
 	text-align: center;
 }
+.select-center{
+	display: block;
+	margin: 0 auto;
+}
 @media only screen and (max-width: 760px),
 (min-device-width: 768px) and (max-device-width: 1024px)  {
 

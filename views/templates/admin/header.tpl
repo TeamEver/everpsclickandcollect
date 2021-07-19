@@ -24,11 +24,13 @@
 				<strong>{l s='Welcome to Ever PS Click & Collect !' mod='everpsclickandcollect'}</strong><br />
 				{l s='Thanks for using Team Ever\'s module' mod='everpsclickandcollect'}</a><br />
 			</p>
+            {if isset($stock_file) && $stock_file}
             <p class="alert alert-info">
                 {l s='You can add your stock file on this folder : ' mod='everpsclickandcollect'} {$stock_file|escape:'htmlall':'UTF-8'}
             </p>
             <a href="{$everpsclickandcollect_cron|escape:'htmlall':'UTF-8'}" target="_blank" class="btn btn-success"> {l s='Trigger stock update cron' mod='everpsclickandcollect'}
             </a>
+            {/if}
         </div>
         <div class="col-xs-12 col-lg-6">
             <p class="alert alert-warning">

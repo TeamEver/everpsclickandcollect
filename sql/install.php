@@ -41,8 +41,42 @@ $sql[] = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'everpsclickandcollect_s
     PRIMARY KEY  (`id_everpsclickandcollect_store_stock`)
 ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8;';
 
+$sql[] = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'everpsclickandcollect_store` (
+    `id_everpsclickandcollect_store` int(11) NOT NULL AUTO_INCREMENT,
+    `id_store` int(11) NOT NULL,
+    `monday_open` varchar(255) DEFAULT NULL,
+    `monday_close` varchar(255) DEFAULT NULL,
+    `tuesday_open` varchar(255) DEFAULT NULL,
+    `tuesday_close` varchar(255) DEFAULT NULL,
+    `wednesday_open` varchar(255) DEFAULT NULL,
+    `wednesday_close` varchar(255) DEFAULT NULL,
+    `thursday_open` varchar(255) DEFAULT NULL,
+    `thursday_close` varchar(255) DEFAULT NULL,
+    `friday_open` varchar(255) DEFAULT NULL,
+    `friday_close` varchar(255) DEFAULT NULL,
+    `saturday_open` varchar(255) DEFAULT NULL,
+    `saturday_close` varchar(255) DEFAULT NULL,
+    `sunday_open` varchar(255) DEFAULT NULL,
+    `sunday_close` varchar(255) DEFAULT NULL,
+    PRIMARY KEY  (`id_everpsclickandcollect_store`,`id_store`)
+) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8;';
+
 foreach ($sql as $query) {
     if (Db::getInstance()->execute($query) == false) {
         return false;
     }
+}
+$stores = Store::getStores(
+    (int)Context::getContext()->language->id
+);
+foreach ($stores as $store) {
+    Db::getInstance()->insert(
+        'everpsclickandcollect_store',
+        array(
+            'id_store' => (int)$store['id_store']
+        ),
+        false,
+        true,
+        Db::REPLACE
+    );
 }

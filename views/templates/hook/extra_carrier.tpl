@@ -40,12 +40,14 @@
 			<td class="text-center">
 				<select class="store_date store_date_{$store.id|escape:'htmlall':'UTF-8'}" data-idstore="{$store.id|escape:'htmlall':'UTF-8'}">
 				{foreach $store.business_hours as $day}
+				{if $day.hours && !empty($day.hours)}
 					<option value="{$day.day|escape:'htmlall':'UTF-8'}" {if $everclickncollect_date == $day.day}selected{/if}>
-						{l s='Next' mod='everpsclickandcollect'} {$day.day|escape:'htmlall':'UTF-8'}
+						{$day.day|escape:'htmlall':'UTF-8'}
 						({foreach $day.hours as $h}
 						{$h|escape:'htmlall':'UTF-8'}
 						{/foreach})
 					</option>
+				{/if}
 				{/foreach}
 				</select>
 			</td>
