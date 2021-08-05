@@ -35,7 +35,7 @@ class Everpsclickandcollect extends CarrierModule
     {
         $this->name = 'everpsclickandcollect';
         $this->tab = 'shipping_logistics';
-        $this->version = '2.3.4';
+        $this->version = '2.3.5';
         $this->author = 'Team Ever';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -1290,7 +1290,9 @@ class Everpsclickandcollect extends CarrierModule
 
     public function hookActionObjectProductUpdateAfter($params)
     {
-        if ((bool)Configuration::get('EVERPSCLICKANDCOLLECT_STOCK') === false) {
+        if ((bool)Configuration::get('PS_ADVANCED_STOCK_MANAGEMENT') === false
+            || (bool)Configuration::get('EVERPSCLICKANDCOLLECT_STOCK') === false
+        ) {
             return;
         }
         $product = new Product(
@@ -1335,6 +1337,11 @@ class Everpsclickandcollect extends CarrierModule
 
     public function hookActionUpdateQuantity($params)
     {
+        if ((bool)Configuration::get('PS_ADVANCED_STOCK_MANAGEMENT') === false
+            || (bool)Configuration::get('EVERPSCLICKANDCOLLECT_STOCK') === false
+        ) {
+            return;
+        }
         $controllerTypes = array('front', 'modulefront');
         if (!in_array(Context::getContext()->controller->controller_type, $controllerTypes)) {
             return;
