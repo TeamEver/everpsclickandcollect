@@ -35,7 +35,7 @@ class Everpsclickandcollect extends CarrierModule
     {
         $this->name = 'everpsclickandcollect';
         $this->tab = 'shipping_logistics';
-        $this->version = '2.3.5';
+        $this->version = '2.3.8';
         $this->author = 'Team Ever';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -537,6 +537,7 @@ class Everpsclickandcollect extends CarrierModule
             return true;
         }
         return false;
+
     }
 
     private function getAllowedStores()
@@ -664,6 +665,7 @@ class Everpsclickandcollect extends CarrierModule
 
     public function hookDisplayCarrierExtraContent($params)
     {
+        Tools::clearAllCache();
         $cart = Context::getContext()->cart;
         $cartproducts = $cart->getProducts();
         $stores = $this->getTemplateVarStores();
@@ -672,6 +674,8 @@ class Everpsclickandcollect extends CarrierModule
         $msg = Configuration::getInt('EVERPSCLICKANDCOLLECT_MSG');
         $custom_msg = $msg[(int)Context::getContext()->language->id];
         $shipping_stores = array();
+       
+
         foreach ($stores as $key => $store) {
             if ((bool)$this->isAllowedStore((int)$store['id_store']) === false) {
                 continue;
@@ -713,22 +717,16 @@ class Everpsclickandcollect extends CarrierModule
             }
             // Manage stock on each store and product if allowed
             if ((bool)Configuration::get('EVERPSCLICKANDCOLLECT_STOCK') === true) {
-                foreach ($cartproducts as $cartproduct) {
-                    $stock = EverpsclickandcollectStoreStock::getStoreStockAvailableByProductId(
-                        (int)$store['id_store'],
-                        (int)$cartproduct['id_product'],
-                        (int)$cartproduct['id_product_attribute'],
-                        (int)Context::getContext()->shop->id
+                $is_store_available = EverpsclickandcollectStoreStock::isCartAvailableForStore(
+                    (object)$cart,
+                    (int)$store['id_store']
+                );
+                if ((bool)$is_store_available === true) {
+                    $store_hours = EverpsclickandcollectStore::getByIdStore(
+                        (int)$store['id_store']
                     );
-                    if ((int)$stock < 0 || (int)$cartproduct['cart_quantity'] > (int)$stock) {
-                        continue 2;
-                    } else {
-                        $store_hours = EverpsclickandcollectStore::getByIdStore(
-                            (int)$store['id_store']
-                        );
-                        $obj_merged = (array)array_merge((array)$store, (array)$store_hours);
-                        $shipping_stores[] = $obj_merged;
-                    }
+                    $obj_merged = (array)array_merge((array)$store, (array)$store_hours);
+                    $shipping_stores[] = $obj_merged;
                 }
             } else {
                 $store_hours = EverpsclickandcollectStore::getByIdStore(
@@ -751,8 +749,8 @@ class Everpsclickandcollect extends CarrierModule
             );
             return $this->display(__FILE__, 'no_carrier.tpl', $this->getCacheId());
         }
-        if ($stores && count($stores) > 0) {
-            $only_one = count($stores) > 1 ? false : true;
+        if ($shipping_stores && count($shipping_stores) > 0) {
+            $only_one = count($shipping_stores) > 1 ? false : true;
             $this->smarty->assign(
                 array(
                     'custom_msg' => $custom_msg,
@@ -1290,9 +1288,7 @@ class Everpsclickandcollect extends CarrierModule
 
     public function hookActionObjectProductUpdateAfter($params)
     {
-        if ((bool)Configuration::get('PS_ADVANCED_STOCK_MANAGEMENT') === false
-            || (bool)Configuration::get('EVERPSCLICKANDCOLLECT_STOCK') === false
-        ) {
+        if ((bool)Configuration::get('EVERPSCLICKANDCOLLECT_STOCK') === false) {
             return;
         }
         $product = new Product(

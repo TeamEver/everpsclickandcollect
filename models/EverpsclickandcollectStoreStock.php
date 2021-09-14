@@ -195,7 +195,7 @@ class EverpsclickandcollectStoreStock extends ObjectModel
         // Hook ( •_•)>⌐■-■
         // After (•_•)
         Hook::exec(
-            'actionGetStoreStockAvailableIdByProductIdAfter',
+            'actionGetStoreStockAvailableByProductIdAfter',
             [
                 'id_store' => (int)$id_store,
                 'id_product' => (int)$id_product,
@@ -535,5 +535,23 @@ class EverpsclickandcollectStoreStock extends ObjectModel
         );
         // Mmmmmmh... Donut....
         return $donut;
+    }
+    public static function isCartAvailableForStore(Cart $cart, $id_store)
+    {
+        $cartproducts = $cart->getProducts();
+        foreach ($cartproducts as $cartproduct) {
+            $stock = self::getStoreStockAvailableByProductId(
+                (int)$id_store,
+                (int)$cartproduct['id_product'],
+                (int)$cartproduct['id_product_attribute'],
+                (int)Context::getContext()->shop->id
+            );
+            if ((int)$stock < 0
+                || (int)$cartproduct['cart_quantity'] > (int)$stock
+            ) {
+                return false;
+            }
+        }
+        return true;
     }
 }
