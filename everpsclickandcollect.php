@@ -35,7 +35,7 @@ class Everpsclickandcollect extends CarrierModule
     {
         $this->name = 'everpsclickandcollect';
         $this->tab = 'shipping_logistics';
-        $this->version = '2.3.8';
+        $this->version = '2.4.1';
         $this->author = 'Team Ever';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -58,11 +58,11 @@ class Everpsclickandcollect extends CarrierModule
         $this->addCarrier();
 
         return parent::install() &&
-            $this->installModuleTab(
-                'AdminEverPsClickAndCollect',
-                'AdminParentStores',
-                $this->l('Click & collect')
-            ) &&
+            // $this->installModuleTab(
+            //     'AdminEverPsClickAndCollect',
+            //     'AdminParentStores',
+            //     $this->l('Click & collect')
+            // ) &&
             $this->registerHook('header') &&
             $this->registerHook('backOfficeHeader') &&
             $this->registerHook('displayCarrierExtraContent') &&
@@ -75,10 +75,11 @@ class Everpsclickandcollect extends CarrierModule
             $this->registerHook('updateCarrier') &&
             $this->registerHook('displayAdminProductsQuantitiesStepBottom') &&
             $this->registerHook('actionObjectProductUpdateAfter') &&
-            $this->registerHook('displayReassurance') &&
             $this->registerHook('displayProductExtraContent') &&
             $this->registerHook('actionUpdateQuantity') &&
-            $this->registerHook('actionObjectProductDeleteAfter');
+            $this->registerHook('actionObjectProductDeleteAfter') &&
+            $this->registerHook('actionOrderStatusUpdate') &&
+            $this->registerHook('actionValidateOrder');
     }
 
     public function uninstall()
@@ -218,6 +219,9 @@ class Everpsclickandcollect extends CarrierModule
         $stores = Store::getStores(
             (int)Context::getContext()->language->id
         );
+        $orderStates = OrderState::getOrderStates(
+            (int)Context::getContext()->language->id
+        );
         return array(
             'form' => array(
                 'legend' => array(
@@ -345,6 +349,41 @@ class Everpsclickandcollect extends CarrierModule
                         ),
                     ),
                     array(
+                        'type' => 'switch',
+                        'label' => $this->l('Send order to store by email'),
+                        'desc' => $this->l('Will send an email to the store with the order summary'),
+                        'hint' => $this->l('Set to "Yes" to send orders by email to the concerned stores'),
+                        'name' => 'EVERPSCLICKANDCOLLECT_MAIL',
+                        'is_bool' => true,
+                        'values' => array(
+                            array(
+                                'id' => 'active_on',
+                                'value' => 1,
+                                'label' => $this->l('Yes')
+                            ),
+                            array(
+                                'id' => 'active_off',
+                                'value' => 0,
+                                'label' => $this->l('No')
+                            )
+                        ),
+                    ),
+                    array(
+                        'type' => 'select',
+                        'label' => $this->l('Validated order state'),
+                        'hint' => $this->l('Will be used for order export'),
+                        'desc' => $this->l('Specify the validated order state'),
+                        'name' => 'EVERPSCLICKANDCOLLECT_VALID_STATES[]',
+                        'class' => 'chosen',
+                        'multiple' => true,
+                        'required' => true,
+                        'options' => array(
+                            'query' => $orderStates,
+                            'id' => 'id_order_state',
+                            'name' => 'name'
+                        )
+                    ),
+                    array(
                         'type' => 'textarea',
                         'lang' => true,
                         'label' => $this->l('Custom message on order tunnel'),
@@ -352,6 +391,7 @@ class Everpsclickandcollect extends CarrierModule
                         'hint' => $this->l('Will be shown before stores list'),
                         'name' => 'EVERPSCLICKANDCOLLECT_MSG',
                         'required' => false,
+                        'autoload_rte' => true
                     ),
                 ),
                 'buttons' => array(
@@ -413,6 +453,17 @@ class Everpsclickandcollect extends CarrierModule
             'EVERPSCLICKANDCOLLECT_IMG' => Configuration::get(
                 'EVERPSCLICKANDCOLLECT_IMG'
             ),
+            'EVERPSCLICKANDCOLLECT_VALID_STATES[]' => Tools::getValue(
+                'EVERPSCLICKANDCOLLECT_VALID_STATES',
+                json_decode(
+                    Configuration::get(
+                        'EVERPSCLICKANDCOLLECT_VALID_STATES'
+                    )
+                )
+            ),
+            'EVERPSCLICKANDCOLLECT_MAIL' => Configuration::get(
+                'EVERPSCLICKANDCOLLECT_MAIL'
+            ),
             'EVERPSCLICKANDCOLLECT_MSG' => (!empty(
                 $msg[(int)Configuration::get('PS_LANG_DEFAULT')]
             )) ? $msg : Configuration::getInt(
@@ -457,6 +508,18 @@ class Everpsclickandcollect extends CarrierModule
             ) {
                 $this->postErrors[] = $this->l(
                     'Error : The field "Show stock on product page" is not valid'
+                );
+            }
+            if (Tools::getValue('EVERPSCLICKANDCOLLECT_VALID_STATES')
+                && !Validate::isArrayWithIds(Tools::getValue('EVERPSCLICKANDCOLLECT_VALID_STATES'))
+            ) {
+                $this->postErrors[] = $this->l('Error : [Validate order state] is not valid');
+            }
+            if (Tools::getValue('EVERPSCLICKANDCOLLECT_MAIL')
+                && !Validate::isBool(Tools::getValue('EVERPSCLICKANDCOLLECT_MAIL'))
+            ) {
+                $this->postErrors[] = $this->l(
+                    'Error : The field "Send order to store by email" is not valid'
                 );
             }
             // Multilingual validation
@@ -511,6 +574,15 @@ class Everpsclickandcollect extends CarrierModule
         Configuration::updateValue(
             'EVERPSCLICKANDCOLLECT_IMG',
             Tools::getValue('EVERPSCLICKANDCOLLECT_IMG')
+        );
+        Configuration::updateValue(
+            'EVERPSCLICKANDCOLLECT_VALID_STATES',
+            json_encode(Tools::getValue('EVERPSCLICKANDCOLLECT_VALID_STATES')),
+            true
+        );
+        Configuration::updateValue(
+            'EVERPSCLICKANDCOLLECT_MAIL',
+            Tools::getValue('EVERPSCLICKANDCOLLECT_MAIL')
         );
         Configuration::updateValue(
             'EVERPSCLICKANDCOLLECT_MSG',
@@ -665,7 +737,7 @@ class Everpsclickandcollect extends CarrierModule
 
     public function hookDisplayCarrierExtraContent($params)
     {
-        Tools::clearAllCache();
+        // Tools::clearAllCache();
         $cart = Context::getContext()->cart;
         $cartproducts = $cart->getProducts();
         $stores = $this->getTemplateVarStores();
@@ -674,8 +746,6 @@ class Everpsclickandcollect extends CarrierModule
         $msg = Configuration::getInt('EVERPSCLICKANDCOLLECT_MSG');
         $custom_msg = $msg[(int)Context::getContext()->language->id];
         $shipping_stores = array();
-       
-
         foreach ($stores as $key => $store) {
             if ((bool)$this->isAllowedStore((int)$store['id_store']) === false) {
                 continue;
@@ -1379,6 +1449,83 @@ class Everpsclickandcollect extends CarrierModule
         );
     }
 
+    public function hookActionOrderStatusUpdate($params)
+    {
+        if ((bool)Configuration::get('EVERPSCLICKANDCOLLECT_MAIL') === false) {
+            return;
+        }
+        return $this->hookActionValidateOrder($params);
+    }
+
+    public function hookActionValidateOrder($params)
+    {
+        if ((bool)Configuration::get('EVERPSCLICKANDCOLLECT_MAIL') === false) {
+            return;
+        }
+        if (isset($params['newOrderStatus'])) {
+            $orderStatus = $params['newOrderStatus'];
+        } else {
+            $orderStatus = $params['orderStatus'];
+        }
+        if (isset($params['order'])) {
+            $order = $params['order'];
+        } else {
+            $order = new Order((int)$params['id_order']);
+        }
+        if ((int)Configuration::get('EVERPSCLICKANDCOLLECT_CARRIER_ID') != $order->id_carrier) {
+            return;
+        }
+        $cart = new Cart(
+            (int)$order->id_cart
+        );
+        $customer = new Customer((int)$order->id_customer);
+        $orderLanguage = new Language((int) $order->id_lang);
+        $cartproducts = $cart->getProducts();
+        $sql = new DbQuery;
+        $sql->select('id_store');
+        $sql->from(
+            'everpsclickandcollect'
+        );
+        $sql->where(
+            'id_cart = '.(int)$order->id_cart
+        );
+        $id_store = Db::getInstance()->getValue($sql);
+        $store = new Store(
+            (int)$id_store
+        );
+        if (Validate::isLoadedObject($store)
+            && Validate::isEmail($store->email)
+            && in_array($orderStatus->id, $this->getValidatedOrderStates())
+        ) {
+            $items = $this->getOrderDatasForEmail($order);
+            // Send mail to store with all informations
+            $subject = $this->l('An order has been placed on your store');
+            $mail_dir = _PS_MODULE_DIR_.$this->name.'/mails/';
+            Mail::send(
+                (int)Context::getContext()->language->id,
+                $this->name,
+                (string)$subject,
+                array(
+                    '{shop_name}' => Configuration::get('PS_SHOP_NAME'),
+                    '{shop_logo}' => _PS_IMG_DIR_.Configuration::get(
+                        'PS_LOGO',
+                        null,
+                        null,
+                        (int)$id_shop
+                    ),
+                    '{message}' => $items,
+                ),
+                (string)$store->email,
+                (string)Configuration::get('PS_SHOP_NAME'),
+                (string)Configuration::get('PS_SHOP_EMAIL'),
+                Configuration::get('PS_SHOP_NAME'),
+                null,
+                null,
+                $mail_dir
+            );
+        }
+    }
+
     private function exportStoreStockToCsv()
     {
         $objects = EverpsclickandcollectStoreStock::getStoresStocksObjects();
@@ -1448,6 +1595,161 @@ class Everpsclickandcollect extends CarrierModule
         }
         $this->postSuccess[] = $this->l('Stores stock has been updated');
         return true;
+    }
+
+    private function getValidatedOrderStates()
+    {
+        $order_states = json_decode(
+            Configuration::get(
+                'EVERPSCLICKANDCOLLECT_VALID_STATES'
+            )
+        );
+        if (!is_array($order_states)) {
+            $order_states = array($order_states);
+        }
+        return $order_states;
+    }
+
+    protected function getOrderDatasForEmail($order)
+    {
+        $cart = new Cart(
+            (int)$order->id_cart
+        );
+        $customer = new Customer(
+            (int)$order->id_customer
+        );
+        $address = new Address(
+            (int)$order->id_address_delivery
+        );
+        $carrier = new Carrier(
+            (int)$order->id_carrier
+        );
+        $tdStyle = 'style="padding:0.3rem 1rem 0.3rem 1rem;"';
+        $tableStyle = 'style="border-collapse: collapse;width:100%;"';
+        $items = '';
+        $table = '<h4>'.$order->reference.'</h4>';
+        // First global datas, as customer
+        $table .= '<table '.$tableStyle.'>';
+        // Global datas header
+        $table .= '<tr style="background-color:#e3e3e3">';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $this->l('Order reference');
+        $table .=  '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $this->l('Customer');
+        $table .=  '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $this->l('Address');
+        $table .=  '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $this->l('Postcode');
+        $table .=  '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $this->l('City');
+        $table .=  '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $this->l('Phone');
+        $table .=  '</td>';
+        $table .=  '</tr>';
+        // Global datas infos
+        $table .= '<tr>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $order->reference;
+        $table .= '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $customer->firstname.' '.$customer->lastname;
+        $table .= '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $address->address1.' '.$order->address2;
+        $table .= '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $address->postcode;
+        $table .= '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $address->city;
+        $table .= '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $address->phone;
+        $table .= '</td>';
+        $table .= '</tr>';
+        $table .= '<table>';
+        // End global datas
+        // Now products
+        $table .= '<h4>'.$this->l('Ordered products').'</h4>';
+        $table .= '<table '.$tableStyle.'>';
+        // Products header
+        $table .= '<tr style="background-color:#e3e3e3">';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $this->l('Product name');
+        $table .=  '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $this->l('Product reference');
+        $table .=  '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $this->l('Product quantity');
+        $table .=  '</td>';
+        $table .=  '</tr>';
+        // Products infos on a loop
+        foreach ($cart->getProducts() as $product) {
+            $table .= '<tr>';
+            $table .=  '<td '.$tdStyle.'>';
+            $table .= $product['name'];
+            $table .= '</td>';
+            $table .=  '<td '.$tdStyle.'>';
+            $table .= $product['reference'];
+            $table .= '</td>';
+            $table .=  '<td '.$tdStyle.'>';
+            $table .= $product['cart_quantity'];
+            $table .= '</td>';
+            $table .= '</tr>';
+        }
+        $table .= '<table>';
+        // End products
+        // Now others datas
+        $table .= '<h4>'.$this->l('Order informations').'</h4>';
+        $table .= '<table '.$tableStyle.'>';
+        // Others datas header
+        $table .= '<tr style="background-color:#e3e3e3">';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $this->l('Payment method');
+        $table .=  '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $this->l('Order date add');
+        $table .=  '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $this->l('Total paid');
+        $table .=  '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $this->l('Shipping method');
+        $table .=  '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $this->l('Total shipping');
+        $table .=  '</td>';
+        $table .=  '</tr>';
+        // Others datas infos
+        $table .= '<tr>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $order->payment;
+        $table .= '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= Tools::displayDate($order->date_add);
+        $table .= '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= Tools::displayPrice($order->total_paid);
+        $table .= '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= $carrier->name;
+        $table .= '</td>';
+        $table .=  '<td '.$tdStyle.'>';
+        $table .= Tools::displayPrice($order->total_shipping);
+        $table .= '</td>';
+        $table .= '</tr>';
+        $table .= '<table>';
+        $table .= '<hr>';
+        $table .= '<hr>';
+        // End other datas
+        $items .= $table;
+        return $items;
     }
 
     public function checkLatestEverModuleVersion($module, $version)
