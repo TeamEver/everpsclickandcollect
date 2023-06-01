@@ -1,4 +1,5 @@
-{*
+<?php
+/**
  * 2019-2023 Team Ever
  *
  * NOTICE OF LICENSE
@@ -14,11 +15,14 @@
  *  @author    Team Ever <https://www.team-ever.com/>
  *  @copyright 2019-2023 Team Ever
  *  @license   http://opensource.org/licenses/afl-3.0.php  Academic Free License (AFL 3.0)
-*}
-<div class="panel">
-    <h3><i class="icon icon-smile"></i> {l s='Ever PS Click & Collect' mod='everpsclickandcollect'}</h3>
-    <img id="everlogo" src="{$everpsclickandcollect_dir|escape:'htmlall':'UTF-8'}logo.png" style="max-width: 120px;">
-    <p>
-        <strong>{l s='Thank you for your trust :-)' mod='everpsclickandcollect'}</strong>
-    </p>
-</div>
+ */
+
+header('Expires: Mon, 26 Jul 1997 05:00:00 GMT');
+header('Last-Modified: '.gmdate('D, d M Y H:i:s').' GMT');
+
+header('Cache-Control: no-store, no-cache, must-revalidate');
+header('Cache-Control: post-check=0, pre-check=0', false);
+header('Pragma: no-cache');
+
+header('Location: ../');
+exit;
