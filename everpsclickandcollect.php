@@ -35,7 +35,7 @@ class Everpsclickandcollect extends CarrierModule
     {
         $this->name = 'everpsclickandcollect';
         $this->tab = 'shipping_logistics';
-        $this->version = '2.4.1';
+        $this->version = '3.0.1';
         $this->author = 'Team Ever';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -216,7 +216,7 @@ class Everpsclickandcollect extends CarrierModule
      */
     protected function getConfigForm()
     {
-        $stores = Store::getStores(
+        $stores = $this->getStores(
             (int)Context::getContext()->language->id
         );
         $orderStates = OrderState::getOrderStates(
@@ -464,9 +464,7 @@ class Everpsclickandcollect extends CarrierModule
             'EVERPSCLICKANDCOLLECT_MAIL' => Configuration::get(
                 'EVERPSCLICKANDCOLLECT_MAIL'
             ),
-            'EVERPSCLICKANDCOLLECT_MSG' => (!empty(
-                $msg[(int)Configuration::get('PS_LANG_DEFAULT')]
-            )) ? $msg : Configuration::getInt(
+            'EVERPSCLICKANDCOLLECT_MSG' => Configuration::getConfigInMultipleLangs(
                 'EVERPSCLICKANDCOLLECT_MSG'
             ),
         );
@@ -698,7 +696,7 @@ class Everpsclickandcollect extends CarrierModule
     /**
     * Add the CSS & JavaScript files you want to be loaded in the BO.
     */
-    public function hookBackOfficeHeader()
+    public function hookDisplayBackOfficeHeader()
     {
         if (Tools::getValue('module_name') == $this->name) {
             $this->context->controller->addJS($this->_path.'views/js/back.js');
@@ -743,7 +741,7 @@ class Everpsclickandcollect extends CarrierModule
         $stores = $this->getTemplateVarStores();
         $evercnc_id_store = Context::getContext()->cookie->__get('everclickncollect_id');
         $everclickncollect_date = Context::getContext()->cookie->__get('everclickncollect_date');
-        $msg = Configuration::getInt('EVERPSCLICKANDCOLLECT_MSG');
+        $msg = Configuration::getConfigInMultipleLangs('EVERPSCLICKANDCOLLECT_MSG');
         $custom_msg = $msg[(int)Context::getContext()->language->id];
         $shipping_stores = array();
         foreach ($stores as $key => $store) {
@@ -1773,5 +1771,22 @@ class Everpsclickandcollect extends CarrierModule
             return true;
         }
         return false;
+    }
+
+
+    /**
+     * Get Stores by language.
+     *
+     * @param int $idLang
+     *
+     * @return array
+     */
+    protected function getStores($idLang)
+    {
+        return Db::getInstance()->executeS(
+            'SELECT s.id_store AS `id`, s.*, sl.*
+            FROM ' . _DB_PREFIX_ . 'store s  ' . Shop::addSqlAssociation('store', 's') . '
+            LEFT JOIN ' . _DB_PREFIX_ . 'store_lang sl ON (sl.id_store = s.id_store AND sl.id_lang = ' . (int) $idLang . ')'
+        );
     }
 }

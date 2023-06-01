@@ -23,17 +23,22 @@
 	{/if}
 	<table id="store_depot_list" class="table table-striped table-bordered table-labeled table-responsive">
 		<th class="text-center">{l s='Store' mod='everpsclickandcollect'}</th>
+		{if isset($show_store_img) && $show_store_img}
+		<th class="text-center">{l s='Address' mod='everpsclickandcollect'}</th>
+		{/if}
 		{if isset($ask_date) && $ask_date}
 		<th class="text-center">{l s='Choose date' mod='everpsclickandcollect'}</th>
 		{/if}
 		<th class="text-center">{l s='Select' mod='everpsclickandcollect'}</th>
 		{foreach from=$stores item=store}
 		<tr class="carrier_depot_item">
+			{if isset($show_store_img) && $show_store_img}
 			<td class="text-center">
-				{if isset($show_store_img) && $show_store_img}
 				<img src="{$store.image.bySize.stores_default.url|escape:'htmlall':'UTF-8'}" alt="{$store.image.legend|escape:'htmlall':'UTF-8'}" title="{$store.image.legend nofilter}"><br>
+			</td>
+			{/if}
+			<td class="text-center">
 				{$store.name|escape:'htmlall':'UTF-8'}<br>
-				{/if}
 				{$store.address.formatted nofilter}
 			</td>
 			{if isset($ask_date) && $ask_date}
