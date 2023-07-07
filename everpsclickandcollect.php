@@ -63,7 +63,7 @@ class Everpsclickandcollect extends CarrierModule
             //     'AdminParentStores',
             //     $this->l('Click & collect')
             // ) &&
-            $this->registerHook('header') &&
+            $this->registerHook('displayHeader') &&
             $this->registerHook('displayBackOfficeHeader') &&
             $this->registerHook('displayCarrierExtraContent') &&
             $this->registerHook('displayOrderConfirmation') &&
@@ -72,7 +72,7 @@ class Everpsclickandcollect extends CarrierModule
             $this->registerHook('displayAdminOrder') &&
             $this->registerHook('actionEmailSendBefore') &&
             $this->registerHook('actionUpdateQuantity') &&
-            $this->registerHook('updateCarrier') &&
+            $this->registerHook('actionCarrierUpdate') &&
             $this->registerHook('displayAdminProductsQuantitiesStepBottom') &&
             $this->registerHook('actionObjectProductUpdateAfter') &&
             $this->registerHook('displayProductExtraContent') &&
