@@ -536,7 +536,6 @@ class EverpsclickandcollectStoreStock extends ObjectModel
         // Mmmmmmh... Donut....
         return $donut;
     }
-    
     public static function isCartAvailableForStore(Cart $cart, $id_store)
     {
         $cartproducts = $cart->getProducts();
