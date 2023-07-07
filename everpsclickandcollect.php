@@ -35,7 +35,7 @@ class Everpsclickandcollect extends CarrierModule
     {
         $this->name = 'everpsclickandcollect';
         $this->tab = 'shipping_logistics';
-        $this->version = '3.1.0';
+        $this->version = '3.1.1';
         $this->author = 'Team Ever';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -710,7 +710,7 @@ class Everpsclickandcollect extends CarrierModule
     /**
      * Add the CSS & JavaScript files you want to be added on the FO.
      */
-    public function hookHeader()
+    public function hookDisplayHeader()
     {
         $controller_name = Tools::getValue('controller');
         if ($controller_name == 'order') {
@@ -719,7 +719,7 @@ class Everpsclickandcollect extends CarrierModule
         $this->context->controller->addCSS($this->_path.'/views/css/front.css');
     }
 
-    public function hookUpdateCarrier($params)
+    public function hookActionCarrierUpdate($params)
     {
         if ((int) $params['id_carrier'] == (int)Configuration::get('EVERPSCLICKANDCOLLECT_CARRIER_ID')) {
             Configuration::updateValue(
